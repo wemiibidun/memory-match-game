@@ -14,7 +14,7 @@
 Memory Match is a modern card‑flipping game built in React that challenges players to find matching pairs. It includes difficulty levels, a timer, move tracking, and best‑time persistence.
 
 ## Screenshot
-![Sample image](https://github.com/wemiibidun/github_profile_finder/blob/main/screenshot_image.png)
+![Sample image](https://github.com/wemiibidun/memory-match-game/blob/main/memory-match-game.png)
 
 ## Technologies
 * HTML — layout structure
