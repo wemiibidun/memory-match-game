@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Memory Match</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-0evHe/X+R7YkIZDRvuzKMRqM+OrBnVFBL6DOitfPri4tjfHxaWutUpFmBp4vmVor"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="flip-card.css" />
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+
+      const EMOJIS = ['🚀', '🪐', '👩🏽‍🚀', '🌟', '☄️', '🛰️', '🌙', '🧩', '🎯', '🧠', '⚡', '🎮'];
+      const DIFFICULTIES = {
+        '4x4': { cols: 4, pairs: 8 },
+        '6x4': { cols: 6, pairs: 12 }
+      };
+
+      const shuffle = (array) => {
+        const result = [...array];
+        for (let i = result.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+      };
+
+      const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      function Card({ card, onClick }) {
+        return (
+          <button
+            className={`game-card ${card.isFlipped || card.isMatched ? 'flipped' : ''} ${card.isMatched ? 'matched' : ''}`}
+            onClick={() => onClick(card.id)}
+            aria-label="memory card"
+            type="button"
+          >
+            <div className="card-face card-front">?</div>
+            <div className="card-face card-back">{card.value}</div>
+          </button>
+        );
+      }
+
+      function GameBoard() {
+        const [difficulty, setDifficulty] = React.useState('4x4');
+        const [cards, setCards] = React.useState([]);
+        const [firstPick, setFirstPick] = React.useState(null);
+        const [secondPick, setSecondPick] = React.useState(null);
+        const [lockBoard, setLockBoard] = React.useState(false);
+        const [moves, setMoves] = React.useState(0);
+        const [seconds, setSeconds] = React.useState(0);
+        const [status, setStatus] = React.useState('Press Start to play.');
+        const [bestTime, setBestTime] = React.useState(null);
+        const timerRef = React.useRef(null);
+
+        const startGame = React.useCallback(() => {
+          const { pairs } = DIFFICULTIES[difficulty];
+          const deckValues = shuffle(EMOJIS).slice(0, pairs);
+          const deck = shuffle(
+            [...deckValues, ...deckValues].map((value, index) => ({
+              id: `${value}-${index}`,
+              value,
+              isFlipped: false,
+              isMatched: false
+            }))
+          );
+
+          setCards(deck);
+          setFirstPick(null);
+          setSecondPick(null);
+          setLockBoard(false);
+          setMoves(0);
+          setSeconds(0);
+          setStatus('Find all the matching pairs!');
+        }, [difficulty]);
+
+        React.useEffect(() => {
+          const key = `memory-best-${difficulty}`;
+          const saved = localStorage.getItem(key);
+          setBestTime(saved ? Number(saved) : null);
+        }, [difficulty]);
+
+        React.useEffect(() => {
+          if (!cards.length) {
+            clearInterval(timerRef.current);
+            return;
+          }
+
+          clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => {
+            setSeconds((prev) => prev + 1);
+          }, 1000);
+
+          return () => clearInterval(timerRef.current);
+        }, [cards.length]);
+
+        React.useEffect(() => {
+          if (!firstPick || !secondPick) return;
+
+          setLockBoard(true);
+          const isMatch = firstPick.value === secondPick.value;
+
+          if (isMatch) {
+            setCards((prev) =>
+              prev.map((card) =>
+                card.value === firstPick.value
+                  ? { ...card, isMatched: true }
+                  : card
+              )
+            );
+            setStatus('Match found!');
+            resetTurn();
+          } else {
+            setStatus('Try again.');
+            setTimeout(() => {
+              setCards((prev) =>
+                prev.map((card) =>
+                  card.id === firstPick.id || card.id === secondPick.id
+                    ? { ...card, isFlipped: false }
+                    : card
+                )
+              );
+              resetTurn();
+            }, 900);
+          }
+        }, [firstPick, secondPick]);
+
+        React.useEffect(() => {
+          if (!cards.length) return;
+          const allMatched = cards.every((card) => card.isMatched);
+          if (allMatched) {
+            clearInterval(timerRef.current);
+            setStatus('You win!');
+            const key = `memory-best-${difficulty}`;
+            if (!bestTime || seconds < bestTime) {
+              localStorage.setItem(key, String(seconds));
+              setBestTime(seconds);
+            }
+          }
+        }, [cards, seconds, difficulty, bestTime]);
+
+        const resetTurn = () => {
+          setFirstPick(null);
+          setSecondPick(null);
+          setLockBoard(false);
+          setMoves((prev) => prev + 1);
+        };
+
+        const handleCardClick = (id) => {
+          if (lockBoard) return;
+          const selected = cards.find((card) => card.id === id);
+          if (!selected || selected.isFlipped || selected.isMatched) return;
+
+          setCards((prev) =>
+            prev.map((card) =>
+              card.id === id ? { ...card, isFlipped: true } : card
+            )
+          );
+
+          if (!firstPick) {
+            setFirstPick(selected);
+            return;
+          }
+
+          setSecondPick(selected);
+        };
+
+        const { cols } = DIFFICULTIES[difficulty];
+
+        return (
+          <div className="container py-4">
+            <div className="row justify-content-center">
+              <div className="col-12 col-lg-10">
+                <header className="game-header text-center mb-4">
+                  <h1 className="game-title">Memory Match</h1>
+                  <p className="game-subtitle">Match all pairs before the timer ends.</p>
+                </header>
+
+                <div className="controls">
+                  <div className="control-group">
+                    <label>Difficulty</label>
+                    <select
+                      value={difficulty}
+                      onChange={(event) => setDifficulty(event.target.value)}
+                    >
+                      {Object.keys(DIFFICULTIES).map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="control-group">
+                    <label>Moves</label>
+                    <div className="pill">{moves}</div>
+                  </div>
+                  <div className="control-group">
+                    <label>Time</label>
+                    <div className="pill">{formatTime(seconds)}</div>
+                  </div>
+                  <div className="control-group">
+                    <label>Best</label>
+                    <div className="pill">{bestTime ? formatTime(bestTime) : '—'}</div>
+                  </div>
+                  <button className="primary" onClick={startGame}>Start / Reset</button>
+                </div>
+
+                <p className="status text-center">{status}</p>
+
+                <div
+                  className="card-board"
+                  style={{ gridTemplateColumns: `repeat(${cols}, minmax(90px, 1fr))` }}
+                >
+                  {cards.map((card) => (
+                    <Card key={card.id} card={card} onClick={handleCardClick} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      root.render(<GameBoard />);
+    </script>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>
